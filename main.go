@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"github.com/jinzhu/gorm"
+	"github.com/gorilla/mux"
+	"net/http"
 )
 
 func main() {
@@ -29,5 +31,20 @@ func main() {
 
 	db.LogMode(true);
 	db.AutoMigrate(&Image{})
+
+	r := mux.NewRouter()
+
+	r.HandleFunc("/upload/image", postHandler).Methods("POST")
+	r.HandleFunc("/image/{id}", getHandler).Methods("GET")
+
+	http.Handle("/", r)
+	http.ListenAndServe(":8080", nil)
+}
+
+func postHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func getHandler(w http.ResponseWriter, r *http.Request) {
 
 }

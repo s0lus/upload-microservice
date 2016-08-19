@@ -1,0 +1,8 @@
+{
+  "DataBase": {
+    "Dialect": "",
+    "ConnectionData": "user=postgres dbname=uploaddb password=superuser1.",
+    "IdleConnections": 10,
+    "MaxOpenConnections": 50
+  }
+}

@@ -13,6 +13,7 @@ import (
 	"os"
 	"image"
 	"path"
+	"io"
 )
 
 func main() {
@@ -41,12 +42,11 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/upload/image/", postHandler(db)).Methods("POST")
-	r.HandleFunc("/image/{id}", getHandler).Methods("GET")
+	r.HandleFunc("/image/{id}", getHandler(db)).Methods("GET")
 
 	http.Handle("/", r)
 	http.ListenAndServe(":3000", nil)
 }
-
 
 func postHandler(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -54,12 +54,12 @@ func postHandler(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 		pathToImage := "./logo.png"
 
 		// Parse image and find: Height, Width, Name
-		file, error := os.Open(pathToImage)
+		fileToParse, error := os.Open(pathToImage)
 		if error != nil {
 			fmt.Println("Invalid path to image")
 		}
 
-		img, _, error := image.DecodeConfig(file)
+		img, _, error := image.DecodeConfig(fileToParse)
 		if error != nil {
 			fmt.Println("Error decode image")
 		}
@@ -76,9 +76,43 @@ func postHandler(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 		newImage := Image{Name:image.Name, Width:image.Width, Height:image.Height}
 
 		db.Create(&newImage)
+
+		error = r.ParseForm()
+		if error != nil {
+			fmt.Println("Error parsing form")
+		}
+
+		r.ParseMultipartForm(32 << 20)
+
+		// "Image" - name in form (key)
+		file, _, error := r.FormFile("Image")
+		if error != nil {
+			fmt.Println("Error call FormFile()")
+		}
+		defer file.Close()
+
+		f, error := os.OpenFile(pathToImage, os.O_WRONLY | os.O_CREATE, 0666)
+		if error != nil {
+			fmt.Println("Error reading 'logo.png' file")
+		}
+		defer f.Close()
+
+		io.Copy(f, file)
 	}
 }
 
-func getHandler(w http.ResponseWriter, r *http.Request) {
+func getHandler(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		imageID := params["id"]
+
+		var image Image
+
+		db.Where("id = ?", imageID).Find(&image)
+
+		if image.ID == 0 {
+			fmt.Println("Image doesn`t exist")
+		}
+	}
 
 }

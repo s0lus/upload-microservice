@@ -11,23 +11,27 @@ import (
 	"net/http"
 	"fmt"
 	"os"
-	"image"
-	"path"
 	"io"
+	"image"
+	"flag"
 )
 
 func main() {
+	configFlag := flag.String("config", "./config.json", "Set path to config file for database")
+
+	flag.Parse();
+
 	var config Config
 
-	jsonStream, error := ioutil.ReadFile("./config.json");
-	if error != nil {
+	jsonStream, err := ioutil.ReadFile(*configFlag);
+	if err != nil {
 		fmt.Println("Error reading 'config.json' file")
 	}
 
 	json.Unmarshal(jsonStream, &config)
 
-	db, error := gorm.Open(config.DataBase.Dialect, config.DataBase.ConnectionData)
-	if error != nil {
+	db, err := gorm.Open(config.DataBase.Dialect, config.DataBase.ConnectionData)
+	if err != nil {
 		fmt.Println("Error connection to database")
 	}
 
@@ -50,54 +54,55 @@ func main() {
 
 func postHandler(db *gorm.DB) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		//TODO: Create flags for open images
-		pathToImage := "./logo.png"
-
-		// Parse image and find: Height, Width, Name
-		fileToParse, error := os.Open(pathToImage)
-		if error != nil {
-			fmt.Println("Invalid path to image")
-		}
-
-		img, _, error := image.DecodeConfig(fileToParse)
-		if error != nil {
-			fmt.Println("Error decode image")
-		}
-
-		var image Image
-
-		baseName := path.Base(pathToImage)
-
-		image.Name = baseName
-		image.Height = img.Height
-		image.Width = img.Width
-
-		// Add new record to database (record: info about image)
-		newImage := Image{Name:image.Name, Width:image.Width, Height:image.Height}
-
-		db.Create(&newImage)
-
-		error = r.ParseForm()
-		if error != nil {
-			fmt.Println("Error parsing form")
-		}
-
 		r.ParseMultipartForm(32 << 20)
 
-		// "Image" - name in form (key)
-		file, _, error := r.FormFile("Image")
-		if error != nil {
-			fmt.Println("Error call FormFile()")
-		}
-		defer file.Close()
+		files := r.MultipartForm.File["Image"]
 
-		f, error := os.OpenFile(pathToImage, os.O_WRONLY | os.O_CREATE, 0666)
-		if error != nil {
-			fmt.Println("Error reading 'logo.png' file")
-		}
-		defer f.Close()
+		for i := range files {
+			fileIn, err := files[i].Open()
+			if err != nil {
+				fmt.Println("Error opening files")
+			}
 
-		io.Copy(f, file)
+			fileOut, err := os.Create("./images/" + files[i].Filename)
+			if err != nil {
+				fmt.Println("Error 'images' folder doesn`t exists")
+			}
+
+			_, err = io.Copy(fileOut, fileIn)
+			if err != nil {
+				fmt.Println("Error copying files")
+			}
+		}
+
+		fmt.Fprintln(w, "Files upload successfully");
+
+		var imageInfo Image
+
+		for i := 0; i < len(files); i++ {
+			fileToParse, err := files[i].Open()
+			if err != nil {
+				fmt.Println("Error opening files")
+			}
+
+			img, _, err := image.DecodeConfig(fileToParse)
+			if err != nil {
+				fmt.Println("Error parsing files")
+			}
+
+			files, err := ioutil.ReadDir("./images/")
+			if err != nil {
+				fmt.Println("Error reading ./images/ directory")
+			}
+
+			imageInfo.Name = files[i].Name()
+			imageInfo.Height = img.Height
+			imageInfo.Width = img.Width
+
+			newImage := Image{Name:imageInfo.Name, Width:imageInfo.Width, Height:imageInfo.Height}
+			db.Create(&newImage)
+		}
+
 	}
 }
 
